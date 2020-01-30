@@ -845,7 +845,7 @@ subroutine tracer_2d_nested(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, np
 subroutine offline_tracer_advection(q, ple0, ple1, mfx, mfy, cx, cy, &
                                     gridstruct, flagstruct, bd, domain, &
                                     ak, bk, ptop, npx, npy, npz,   &
-                                    nq, dt)
+                                    nq, dt, pleadv)
 
       use fv_mapz_mod,        only: mapn_tracer, map1_q2
       use fv_fill_mod,        only: fillz
@@ -870,6 +870,7 @@ subroutine offline_tracer_advection(q, ple0, ple1, mfx, mfy, cx, cy, &
       real, intent(IN   ) ::  ak(npz+1)                  ! AK for remapping
       real, intent(IN   ) ::  bk(npz+1)                  ! BK for remapping
       real, intent(IN   ) :: ptop
+      real, intent(OUT  ) ::pleadv(bd%is:bd%ie,bd%js:bd%je,npz+1)    ! DELP after adv_core
 ! Local Arrays
       real ::   xL(bd%isd:bd%ied+1,bd%jsd:bd%jed  ,npz)  ! X-Dir for MPP Updates
       real ::   yL(bd%isd:bd%ied  ,bd%jsd:bd%jed+1,npz)  ! Y-Dir for MPP Updates
@@ -954,6 +955,12 @@ subroutine offline_tracer_advection(q, ple0, ple1, mfx, mfy, cx, cy, &
                         flagstruct%hord_tr, flagstruct%q_split, dt, 0, i_pack, &
                         flagstruct%nord_tr, flagstruct%trdm2, flagstruct%lim_fac, dpA=dpA)
     endif
+
+    ! Build post-advection pressure edges
+    pleadv(:,:,1) = ptop
+    do k=2,npz+1
+       pleadv(:,:,k) = pleadv(:,:,k-1) + dpA(:,:,k-1)
+    end do
 
 !------------------------------------------------------------------
 ! Re-Map constituents
