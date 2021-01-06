@@ -79,7 +79,7 @@ private
 
 ! GCHP: parameters rescale_trop_only and show_scaling
 logical, parameter :: rescale_trop_only=.True.
-logical, parameter :: show_scaling=.False.
+logical, parameter :: show_scaling=.True.
 
 public :: tracer_2d, tracer_2d_nested, tracer_2d_1L, offline_tracer_advection
 
@@ -846,10 +846,9 @@ subroutine tracer_2d_nested(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, np
 subroutine offline_tracer_advection(q, ple0, ple1, mfx, mfy, cx, cy, &
                                     gridstruct, flagstruct, bd, domain, &
                                     ak, bk, ptop, npx, npy, npz,   &
-                                    nq, dt, pleadv)
+                                    nq, dt, pleadv, run_free)
                                     ! GCHP: pass extra optional argument pleadv
                                     !nq, dt)
-
 
       use fv_mapz_mod,        only: mapn_tracer, map1_q2
       use fv_fill_mod,        only: fillz
@@ -876,6 +875,7 @@ subroutine offline_tracer_advection(q, ple0, ple1, mfx, mfy, cx, cy, &
       real, intent(IN   ) :: ptop
       ! GCHP: add optional argument pleadv
       real, optional, intent(OUT  ) ::pleadv(bd%is:bd%ie,bd%js:bd%je,npz+1)    ! DELP after adv_core
+      logical, optional, intent(IN) :: run_free_in ! Skip pressure correction (!)
 ! Local Arrays
       real ::   xL(bd%isd:bd%ied+1,bd%jsd:bd%jed  ,npz)  ! X-Dir for MPP Updates
       real ::   yL(bd%isd:bd%ied  ,bd%jsd:bd%jed+1,npz)  ! Y-Dir for MPP Updates
@@ -911,6 +911,14 @@ subroutine offline_tracer_advection(q, ple0, ple1, mfx, mfy, cx, cy, &
 
       integer :: is,  ie,  js,  je
       integer :: isd, ied, jsd, jed
+
+      logical :: run_free
+
+      if (present(run_free_in)) then
+          run_free = run_free_in
+      else
+          run_free = .false.
+      end if
 
       is  = bd%is
       ie  = bd%ie
@@ -1043,30 +1051,32 @@ subroutine offline_tracer_advection(q, ple0, ple1, mfx, mfy, cx, cy, &
        !   !---------------
        !   q(is:ie,js:je,1:npz,iq) = q3(is:ie,js:je,1:npz,iq) * scalingFactor
        !enddo
-       if (rescale_trop_only) then
-          do iq=1,nq
-             scalingFactor = calcScalingFactorTrop(q3(is:ie,js:je,1:npz,iq), dp2, ple1,&
-                                                   npx, npy, npz, gridstruct, kStart, bd)
-             ! Return tracers
-             !---------------
-             q(is:ie,js:je,1:(kStart-1),iq) = q3(is:ie,js:je,1:(kStart-1),iq)
-             q(is:ie,js:je,kStart:npz,iq) = q3(is:ie,js:je,kStart:npz,iq) * scalingFactor
-             if (show_scaling.and.is_master()) then
-                write(*,'(a,I3,a,E16.5E4)') ' FV3 scaling error for tracer ', iq, ': ', &
-                    (scalingFactor - 1.0)
-             end if
-          enddo
-       else
-          do iq=1,nq
-             scalingFactor = calcScalingFactor(q3(is:ie,js:je,1:npz,iq), dp2, ple1, npx, npy, npz, gridstruct, bd)
-             ! Return tracers
-             !---------------
-             q(is:ie,js:je,1:npz,iq) = q3(is:ie,js:je,1:npz,iq) * scalingFactor
-             if (show_scaling.and.is_master()) then
-                write(*,'(a,I3,a,E16.5E4)') ' FV3 scaling error for tracer ', iq, ': ', &
-                    (scalingFactor - 1.0)
-             end if
-          enddo
+       if (.not. run_free) then
+          if (rescale_trop_only) then
+             do iq=1,nq
+                scalingFactor = calcScalingFactorTrop(q3(is:ie,js:je,1:npz,iq), dp2, ple1,&
+                                                      npx, npy, npz, gridstruct, kStart, bd)
+                ! Return tracers
+                !---------------
+                q(is:ie,js:je,1:(kStart-1),iq) = q3(is:ie,js:je,1:(kStart-1),iq)
+                q(is:ie,js:je,kStart:npz,iq) = q3(is:ie,js:je,kStart:npz,iq) * scalingFactor
+                if (show_scaling.and.is_master()) then
+                   write(*,'(a,I3,a,E16.5E4)') ' FV3 scaling error for tracer ', iq, ': ', &
+                       (scalingFactor - 1.0)
+                end if
+             enddo
+          else
+             do iq=1,nq
+                scalingFactor = calcScalingFactor(q3(is:ie,js:je,1:npz,iq), dp2, ple1, npx, npy, npz, gridstruct, bd)
+                ! Return tracers
+                !---------------
+                q(is:ie,js:je,1:npz,iq) = q3(is:ie,js:je,1:npz,iq) * scalingFactor
+                if (show_scaling.and.is_master()) then
+                   write(*,'(a,I3,a,E16.5E4)') ' FV3 scaling error for tracer ', iq, ': ', &
+                       (scalingFactor - 1.0)
+                end if
+             enddo
+          endif
        endif
 
 end subroutine offline_tracer_advection
